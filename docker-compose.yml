@@ -1,0 +1,39 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: portfolio-mongo
+    restart: unless-stopped
+    ports:
+      # Só para lhe acederes a partir do Windows (Compass, mongosh). A API não
+      # passa por aqui: fala com o Mongo pela rede do compose, em mongo:27017.
+      # Se já tiveres um MongoDB local no 27017, define MONGO_HOST_PORT=27018.
+      - "${MONGO_HOST_PORT:-27017}:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+    container_name: portfolio-api
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/portfolio
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      JWT_SECRET: ${JWT_SECRET:-troca-este-segredo-em-producao-com-pelo-menos-32-bytes}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-manuelluvuvamo337@gmail.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
+      ADMIN_NAME: ${ADMIN_NAME:-Manuel Luvuvamo}
+      SEED_ENABLED: ${SEED_ENABLED:-true}
+
+volumes:
+  mongo-data:
