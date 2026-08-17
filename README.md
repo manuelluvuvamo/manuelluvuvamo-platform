@@ -20,6 +20,9 @@ manuelluvuvamo.com/          repositório principal (este)
 | `frontend` | Next.js 13 (App Router), TypeScript, Tailwind | `manuelluvuvamo/manuelluvuvamo.com` |
 | `backend` | Java 21, Spring Boot 3.3, MongoDB | `manuelluvuvamo/manuelluvuvamo-api` |
 
+Precisas de **Node 24** (fixado em `frontend/package.json`), **JDK 21** e Docker.
+O pacote Java é `com.manuelluvuvamo.portfolio`.
+
 ---
 
 ## Arranque rápido
