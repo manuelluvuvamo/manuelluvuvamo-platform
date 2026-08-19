@@ -151,6 +151,80 @@ git submodule sync --recursive
 ```
 
 ---
+
+## Variáveis de ambiente
+
+### `backend/` — API Spring Boot
+
+Copia `backend/.env.example` para `backend/.env` (ou define-as no ambiente de
+produção). Todas têm valor por omissão para desenvolvimento local; as duas
+marcadas com ⚠️ **têm de mudar antes de publicares**.
+
+| Variável | Por omissão | Para quê |
+|---|---|---|
+| `MONGODB_URI` | `mongodb://localhost:27017/portfolio` | Ligação ao MongoDB. No compose é `mongodb://mongo:27017/portfolio`. |
+| `SERVER_PORT` | `8080` | Porta da API. |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | Origens autorizadas, separadas por vírgula. Em produção, só o domínio do site. |
+| ⚠️ `JWT_SECRET` | valor de exemplo | Chave de assinatura dos tokens. **Mínimo 32 bytes.** Gera com `openssl rand -base64 48`. |
+| `JWT_ACCESS_MINUTES` | `30` | Validade do access token. |
+| `JWT_REFRESH_DAYS` | `14` | Validade do refresh token. |
+| `ADMIN_EMAIL` | `manuelluvuvamo337@gmail.com` | Utilizador do painel, criado no primeiro arranque. |
+| ⚠️ `ADMIN_PASSWORD` | `admin12345` | Password inicial. Troca-a no painel depois de entrares — a partir daí esta variável deixa de ser usada. |
+| `ADMIN_NAME` | `Manuel Luvuvamo` | Nome mostrado no painel. |
+| `SEED_ENABLED` | `true` | Popula colecções **vazias** a partir de `seed/portfolio-seed.json`. Nunca sobrepõe o que já editaste. |
+
+#### Manter a API acordada
+
+O plano gratuito do Render adormece o serviço ao fim de **~15 minutos** sem
+pedidos, e acordá-lo demora perto de um minuto. O workflow
+`backend/.github/workflows/manter-api-acordada.yml` toca-lhe de 10 em 10
+minutos, **das 07h às 23h de Luanda**.
+
+A janela é deliberada: o plano dá **750 horas de instância por mês** e um
+serviço acordado 24 horas por dia gasta ~730 — ficarias no limite, sem folga
+para mais nada. Nesta janela gastam-se ~480.
+
+| Variável | Onde se define | Valor |
+|---|---|---|
+| `API_HEALTH_URL` | GitHub → repositório do backend → *Settings → Secrets and variables → Actions → **Variables*** | `https://<serviço>.onrender.com/actuator/health` |
+
+Repara onde **não** se define: num `.env`. O workflow corre no GitHub, não na
+aplicação — a API nunca lê esta variável. Está listada em
+`backend/.env.example` apenas para haver um sítio único onde procurar.
+
+E é *Variable*, não *Secret*: o endereço é público, e assim aparece nos
+registos quando algo corre mal.
+
+> Dois senões. O GitHub **desactiva workflows agendados em repositórios sem
+> actividade há 60 dias** — se o projecto ficar quieto uns meses, isto pára em
+> silêncio. E os agendamentos podem atrasar-se 5 a 15 minutos em horas de
+> pico, o que ocasionalmente deixa o serviço adormecer. Se quiseres mais
+> rigor, o [cron-job.org](https://cron-job.org/) ou o
+> [UptimeRobot](https://uptimerobot.com/) fazem o mesmo com mais pontualidade,
+> e podem coexistir com o workflow.
+
+### `frontend/` — Next.js
+
+Copia `frontend/.env.example` para `frontend/.env.local`.
+
+| Variável | Por omissão | Para quê |
+|---|---|---|
+| `API_URL` | `http://localhost:8080/api/v1` | Endereço da API. Nada disto corre no browser, por isso é uma variável normal de servidor: não vai para o pacote do cliente. |
+| `NEXT_PUBLIC_API_URL` | — | Aceite por compatibilidade, mas a `API_URL` tem prioridade. Esta é fixada no build e expõe o endereço da API no browser. |
+| `NEXT_PUBLIC_SITE_URL` | `https://manuelluvuvamo.vercel.app` | Usado nos metadados, canónicos e sitemap. |
+| `WEBHOOK_URL` | — | Webhook do Discord. Opcional: se estiver definido, cada mensagem de contacto também chega ao Discord. |
+
+### Raiz — só para o `docker-compose`
+
+| Variável | Por omissão | Para quê |
+|---|---|---|
+| `MONGO_HOST_PORT` | `27017` | Porta do Windows por onde chegas ao Mongo do container. Muda para `27018` se já tiveres um MongoDB local. |
+
+> Se a API estiver em baixo, o site **não** parte: cai para o conteúdo estático
+> de `frontend/src/data/seed.json`. O painel, esse, precisa mesmo da API.
+
+---
+
 ## Docker
 
 ### Comandos
@@ -166,6 +240,121 @@ docker compose down -v            # o mesmo, e apaga a base de dados
 O frontend **não** está no compose: corre-se com `npm run dev`, para teres
 recarregamento imediato enquanto trabalhas.
 
+### Preciso de criar uma rede para a API falar com o Mongo?
+
+**Não.** O `docker compose` cria automaticamente uma rede *bridge* para o
+projecto (vais vê-la nos logs como `manuelluvuvamocom_default`) e liga lá todos
+os serviços do ficheiro. Dentro dessa rede, cada serviço é resolúvel pelo
+**nome do serviço** — é por isso que a API usa:
+
+```
+MONGODB_URI=mongodb://mongo:27017/portfolio
+```
+
+e não `localhost`. Dentro do container da API, `localhost` é o próprio
+container, não a máquina nem o Mongo.
+
+Só precisarias de declarar `networks:` à mão se quisesses isolar serviços entre
+si, ligar containers de **projectos compose diferentes**, ou fixar o nome da
+rede. Para este caso, o comportamento por omissão chega.
+
+O `ports:` do Mongo existe apenas para tu lhe acederes a partir do Windows
+(Compass, `mongosh`). Se o removeres, a API continua a falar com ele
+exactamente na mesma — e a base de dados deixa de estar exposta, o que é o que
+queres em produção.
+
+### E se eu já tiver o MongoDB instalado no PC, na mesma porta?
+
+Não há prioridade entre os dois: **há colisão, e o compose falha** a arrancar o
+container com `Bind for 0.0.0.0:27017 failed: port is already allocated`. O
+processo do Windows já tem a porta, e o Docker não a consegue tomar.
+
+Nada disto afecta a API. Ela não passa pelo `ports:` — liga-se pela rede do
+compose a `mongo:27017`, dentro do Docker. **A API usa sempre o Mongo do
+container**, tenhas ou não um instalado no Windows. São duas bases de dados
+separadas, que nunca se misturam.
+
+Para resolver a colisão, escolhe uma das três:
+
+```bash
+# a) publicar noutra porta do Windows (a API continua igual)
+MONGO_HOST_PORT=27018 docker compose up -d
+
+# b) não publicar de todo — apaga o bloco "ports:" do serviço mongo
+
+# c) parar o serviço local enquanto trabalhas neste projecto
+net stop MongoDB
+```
+
+Com a opção (a), ligas-te ao Mongo do container em `localhost:27018` e ao teu
+Mongo local em `localhost:27017`, sem ambiguidade.
+
+---
+
+## Imagens
+
+Todos os campos de imagem do painel — capa de projecto, capa de artigo,
+miniatura de vlog, fotografia do perfil — aceitam **duas coisas**: um endereço
+escrito à mão, ou um ficheiro carregado do computador.
+
+O que fica guardado é sempre um endereço. Carregar um ficheiro apenas o
+preenche por ti:
+
+1. o ficheiro sobe para a API (`POST /api/v1/admin/files`);
+2. é guardado no **GridFS do próprio MongoDB** — sem serviço de armazenamento
+   a mais para manter, e os ficheiros viajam nos backups da base de dados;
+3. o campo fica com `/media/<id>`, um caminho **relativo**.
+
+Ser relativo é o que importa: a mesma base de dados serve local, homologação e
+produção sem o endereço da API colado ao conteúdo. O `/media/<id>` é servido
+pelo Next, que vai buscar o ficheiro à API e o entrega com cache permanente
+(o identificador nunca muda de conteúdo).
+
+Aceita JPEG, PNG, WebP, GIF, AVIF e SVG, até 5 MB.
+
+---
+
+## Contagem de leitura
+
+Cada artigo do blog conta **duas coisas diferentes**:
+
+| | Quando conta |
+|---|---|
+| **Aberturas** | o artigo foi aberto |
+| **Leituras completas** | o leitor chegou ao fim do texto |
+
+A separação é o que torna o número útil: cem aberturas com três leituras dizem
+algo que "cem visitas" nunca diria. Vês os dois na listagem do blog, em
+`/admin/posts`.
+
+Cada um conta no máximo uma vez por separador, por isso recarregar a página não
+inflaciona nada. O incremento acontece dentro do Mongo, sem ler o documento
+primeiro — duas visitas ao mesmo tempo contam as duas, e a data de alteração do
+artigo não é tocada.
+
+O browser fala com o próprio site (`/api/metrics/…`) e não com a API. É de
+propósito: cada preview do Vercel tem um domínio diferente, e uma chamada
+directa à API falharia por CORS em todos eles, em silêncio.
+
+---
+
+## Porque é que o `npm run dev` parece lento
+
+Não é a API nem a base de dados. É o Next a compilar cada rota **na primeira
+vez que a visitas**. Medido nesta máquina:
+
+| | Primeira visita | Depois |
+|---|---|---|
+| `npm run dev` | 7 a 10 s | ~1 s |
+| `npm run build && npm start` | 40 a 70 ms | 30 a 70 ms |
+
+Em produção as páginas são geradas estaticamente e servidas em dezenas de
+milissegundos. Se quiseres avaliar a velocidade real do site, mede com
+`npm run build && npm start` — o `dev` mede o compilador, não o site.
+
+Se o `dev` estiver insuportável, o costume em Windows é excluir a pasta do
+projecto (sobretudo `node_modules` e `.next`) da análise em tempo real do
+antivírus.
 
 ---
 
